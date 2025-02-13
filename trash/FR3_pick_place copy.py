@@ -1,4 +1,5 @@
 # 2012 이걸
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
@@ -17,14 +18,6 @@ from omni.isaac.core.tasks import PickPlace
 import omni.isaac.motion_generation as mg
 from omni.isaac.core.articulations import Articulation
 from omni.isaac.core.utils.extensions import get_extension_path_from_name
-from omni.isaac.core.prims import XFormPrim
-from omni.isaac.core.utils.stage import create_new_stage
-from omni.isaac.core.utils.prims import create_prim
-
-
-import time
-import omni.kit.commands
-from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, create_prim
 
 
 class FR3RMPFlowController(mg.MotionPolicyController):
@@ -110,166 +103,95 @@ class FR3PickPlaceController(manipulators_controllers.PickPlaceController):
         )
 
 
-class FR3PickPlaceTask(PickPlace):
-    def __init__(
-        self,
-        name: str = "FR3_pick_place",
-        cube_initial_position: np.ndarray = None,
-        cube_initial_orientation: np.ndarray = None,
-        target_position: np.ndarray = None,
-        offset: np.ndarray = None,
-    ) -> None:
-        super().__init__(
-            name=name,
-            cube_initial_position=cube_initial_position,
-            cube_initial_orientation=cube_initial_orientation,
-            target_position=target_position,
-            cube_size=np.array([0.0515, 0.0515, 0.0515]),
-            offset=offset,
-        )
-        return
 
-    def set_robot(self) -> SingleManipulator:
-        robot_prim_path = "/World/FR3"
-        path_to_robot_usd = get_assets_root_path() + "/Isaac/Robots/Franka/FR3/fr3.usd"
-        add_reference_to_stage(usd_path=path_to_robot_usd, prim_path=robot_prim_path)
-        gripper = ParallelGripper(  # For the finger only the first value is used, second is ignored
-            end_effector_prim_path="/World/FR3/fr3_hand",
-            joint_prim_names=["fr3_finger_joint1", "fr3_finger_joint2"],
-            joint_opened_positions=np.array([0.04, 0.04]),
-            joint_closed_positions=np.array([0, 0]),
-            action_deltas=np.array([0.04, 0.04]),
-        )
-        fr3_robot = SingleManipulator(
-            prim_path=robot_prim_path,
-            name="my_fr3",
-            end_effector_prim_name="fr3_hand",
-            gripper=gripper,
-        )
-        joints_default_positions = np.array(
-            [0.0, -0.3, 0.0, -1.8, 0.0, 1.5, 0.7, +0.04, -0.04]
-        )
-        joints_default_positions[7] = 0.04
-        joints_default_positions[8] = 0.04
-        fr3_robot.set_joints_default_state(positions=joints_default_positions)
-        return fr3_robot
-
-class FR3Stacking(FR3PickPlaceTask):
+class FR3StackingTask(PickPlace):
     def __init__(
         self,
         name: str = "FR3_stacking",
-        cube_initial_positions: list[np.ndarray] = None,
-        cube_initial_orientations: list[np.ndarray] = None,
-        target_positions: list[np.ndarray] = None,
+        cube_initial_positions: np.ndarray = None,  # 3개의 공 위치
+        cube_initial_orientations: np.ndarray = None,
+        target_positions: np.ndarray = None,  # 쌓을 목표 위치
         offset: np.ndarray = None,
     ) -> None:
         if cube_initial_positions is None:
-            raise ValueError("cube_initial_positions must be provided and cannot be None.")
+            cube_initial_positions = np.array([
+                [-0.3,  0.6,  0.0515 / 2.0],
+                [-0.4,  0.5,  0.0515 / 2.0],
+                [-0.2,  0.4,  0.0515 / 2.0]
+            ])
         if cube_initial_orientations is None:
-            cube_initial_orientations = [np.array([0, 0, 0, 1]) for _ in cube_initial_positions]
+            cube_initial_orientations = np.zeros((3, 4))  # 단위 쿼터니언 (w, x, y, z) = (1,0,0,0)
+            cube_initial_orientations[:, 0] = 1  # w = 1 설정
+        
+        if target_positions is None:
+            base_target = np.array([-0.3, 0.6, 0.0515 / 2.0])  # 첫 번째 블록 위치
+            target_positions = np.array([
+                base_target,
+                base_target + np.array([0, 0, 0.0515]),  # 두 번째 블록 (위로 쌓음)
+                base_target + np.array([0, 0, 0.103])   # 세 번째 블록 (더 위로)
+            ])
 
-        # ✅ `self.world`를 먼저 생성
-        self.world = World(stage_units_in_meters=1.0)
-
-        # ✅ 부모 클래스 초기화
         super().__init__(
             name=name,
-            cube_initial_position=cube_initial_positions[0],  
+            cube_initial_position=cube_initial_positions[0],  # 첫 번째 공만 PickPlace에 전달
             cube_initial_orientation=cube_initial_orientations[0],
-            target_position=target_positions[0],  
+            target_position=target_positions[0],
+            cube_size=np.array([0.0515, 0.0515, 0.0515]),
             offset=offset,
         )
 
         self.cube_initial_positions = cube_initial_positions
         self.cube_initial_orientations = cube_initial_orientations
         self.target_positions = target_positions
-        self.current_index = 0  
-
-        # ✅ 블록을 환경에 추가 (중복 생성 방지)
-        self.cube_prims = []
-        for i, pos in enumerate(cube_initial_positions):
-            cube_name = f"cube_{i}"
-            prim_path = f"/World/{cube_name}"
-
-            # ✅ 기존 Prim 삭제 (완전히 삭제될 때까지 확인)
-            existing_prim = get_prim_at_path(prim_path)
-            if existing_prim:
-                print(f"⚠️ 기존 Prim 삭제 시도: {prim_path}")
-                delete_prim(prim_path)
-                self.world.scene.wait_for_usd()  # 🚀 USD 업데이트 대기
-                time.sleep(0.2)  # 🔥 추가 대기 시간
                 
-                # 🔄 삭제 확인 및 재시도
-                max_retries = 5
-                for retry in range(max_retries):
-                    if not get_prim_at_path(prim_path):
-                        break
-                    print(f"🔄 삭제 확인 중... ({retry+1}/{max_retries})")
-                    delete_prim(prim_path)
-                    time.sleep(0.2)
-                else:
-                    raise Exception(f"❌ Prim 삭제 실패: {prim_path}")
+    def set_robot(self) -> SingleManipulator:
+        """PickPlace에서 요구하는 set_robot() 메서드 추가"""
+        robot_prim_path = "/World/FR3"
+        path_to_robot_usd = get_assets_root_path() + "/Isaac/Robots/Franka/FR3/fr3.usd"
+        add_reference_to_stage(usd_path=path_to_robot_usd, prim_path=robot_prim_path)
+        
+        gripper = ParallelGripper(
+            end_effector_prim_path="/World/FR3/fr3_hand",
+            joint_prim_names=["fr3_finger_joint1", "fr3_finger_joint2"],
+            joint_opened_positions=np.array([0.04, 0.04]),
+            joint_closed_positions=np.array([0, 0]),
+            action_deltas=np.array([0.04, 0.04]),
+        )
+        
+        fr3_robot = SingleManipulator(
+            prim_path=robot_prim_path,
+            name="my_fr3",
+            end_effector_prim_name="fr3_hand",
+            gripper=gripper,
+        )
 
-            # ✅ USD 업데이트 강제 적용
-            omni.kit.commands.execute("FlushStage")
+        joints_default_positions = np.array(
+            [0.0, -0.3, 0.0, -1.8, 0.0, 1.5, 0.7, +0.04, -0.04]
+        )
+        joints_default_positions[7] = 0.04
+        joints_default_positions[8] = 0.04
+        fr3_robot.set_joints_default_state(positions=joints_default_positions)
 
-            # ✅ 새로운 블록 생성
-            create_prim(
-                prim_path,  
-                "Cube",  
-                position=pos,  
-                orientation=cube_initial_orientations[i],
-                scale=[0.0515, 0.0515, 0.0515],  
-            )
+        # ✅ Articulation 객체를 직접 가져와서 물리 엔진 초기화
+        fr3_articulation = fr3_robot.
+        fr3_articulation.post_load_reset()
 
-            self.cube_prims.append(prim_path)
+        return fr3_robot
 
-# 월드 생성
+
 my_world = World(stage_units_in_meters=1.0)
 
-# 여러 개의 블록을 쌓을 위치 설정
-stack_positions = [
-    np.array([-0.3, 0.6, 0.0515 / 2.0]),  # 첫 번째 블록 위치
-    np.array([-0.3, 0.6, 0.0515 + 0.0515 / 2.0]),  # 두 번째 블록 (첫 블록 위)
-    np.array([-0.3, 0.6, 2 * 0.0515 + 0.0515 / 2.0]),  # 세 번째 블록 (두 번째 블록 위)
-]
-# 블록 초기 위치 설정 (로봇이 집을 위치)
-cube_initial_positions = [
-    np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 첫 번째 블록 pick 위치
-    np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 두 번째 블록 pick 위치 (같은 위치에서 pick)
-    np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 세 번째 블록 pick 위치
-]
+target_position = np.array([-0.3, 0.6, 0])
+target_position[2] = 0.0515 / 2.0
+my_task = FR3StackingTask()
 
-# 블록 초기 방향 설정 (기본적으로 모든 블록은 회전 없이 pick)
-cube_initial_orientations = [np.array([0, 0, 0, 1]) for _ in cube_initial_positions]
-
-# 블록을 놓을 위치 설정 (스택할 목표 위치)
-stack_positions = [
-    np.array([-0.3, 0.6, 0.0515 / 2.0]),  # 첫 번째 블록 위치
-    np.array([-0.3, 0.6, 0.0515 + 0.0515 / 2.0]),  # 두 번째 블록 (첫 블록 위)
-    np.array([-0.3, 0.6, 2 * 0.0515 + 0.0515 / 2.0]),  # 세 번째 블록 (두 번째 블록 위)
-]
-
-# my_task 객체 생성 (이제 cube_initial_positions과 cube_initial_orientations도 전달!)
-my_task = FR3Stacking(
-    cube_initial_positions=cube_initial_positions,
-    cube_initial_orientations=cube_initial_orientations,
-    target_positions=stack_positions,
-)
-
-
-# 시뮬레이션 월드에 태스크 추가
 my_world.add_task(my_task)
 my_world.reset()
 
-# 로봇 세팅
+
 fr3_robot = my_task.set_robot()
 fr3_robot.initialize()
 gripper = fr3_robot.gripper
-
-
-
-
 
 my_controller = FR3PickPlaceController(
     name="FR3_controller",
@@ -279,6 +201,7 @@ my_controller = FR3PickPlaceController(
 )
 
 task_params = my_world.get_task("FR3_stacking").get_params()
+
 articulation_controller = fr3_robot.get_articulation_controller()
 reset_needed = False
 while simulation_app.is_running():
@@ -289,15 +212,16 @@ while simulation_app.is_running():
 
     if my_world.is_playing():
         if reset_needed or my_world.current_time_step_index == 0:
+            # 기존 작업 정리
             my_task.cleanup()
             my_world.reset()
-
-            # 새로운 로봇 초기화
+            
+            # 새로운 로봇 생성 및 초기화
             fr3_robot = my_task.set_robot()
             fr3_robot.initialize()
             gripper = fr3_robot.gripper
 
-            # 컨트롤러 재설정
+            # 컨트롤러 재설정 (기존 컨트롤러가 이전 로봇을 참조하기 때문)
             my_controller = FR3PickPlaceController(
                 name="FR3_controller",
                 gripper=gripper,
@@ -305,14 +229,21 @@ while simulation_app.is_running():
                 end_effector_initial_height=0.3,
             )
 
+            # task 초기화
             my_task.post_reset()
             reset_needed = False
 
         observations = my_world.get_observations()
 
-        # 블록이 목표 위치에 도달하면 다음 블록으로 이동
-        if my_controller.is_done():
-            my_task.update_target()
+        # Observation 확인
+        if (
+            task_params["cube_name"]["value"] in observations
+            and "position" in observations[task_params["cube_name"]["value"]]
+            and "target_position" in observations[task_params["cube_name"]["value"]]
+            and task_params["robot_name"]["value"] in observations
+            and "joint_positions" in observations[task_params["robot_name"]["value"]]
+        ):
+            print("Observation valid")
 
         # 컨트롤러 업데이트 및 동작 수행
         actions = my_controller.forward(
@@ -322,4 +253,11 @@ while simulation_app.is_running():
             end_effector_offset=np.array([0, 0, 0.0925]),
         )
 
+        if my_controller.is_done():
+            print("Done picking and placing")
+        else:
+            print(f"Phase: {my_controller.get_current_event()}")
+
+        # 새로 생성된 articulation_controller를 사용하여 동작 적용
+        articulation_controller = fr3_robot.get_articulation_controller()
         articulation_controller.apply_action(actions)

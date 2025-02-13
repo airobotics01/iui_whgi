@@ -1,4 +1,4 @@
-# 2012 이걸
+# 2012
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
@@ -20,11 +20,10 @@ from omni.isaac.core.utils.extensions import get_extension_path_from_name
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.stage import create_new_stage
 from omni.isaac.core.utils.prims import create_prim
-
-
 import time
 import omni.kit.commands
 from omni.isaac.core.utils.prims import get_prim_at_path, delete_prim, create_prim
+
 
 
 class FR3RMPFlowController(mg.MotionPolicyController):
@@ -153,16 +152,16 @@ class FR3PickPlaceTask(PickPlace):
         joints_default_positions[8] = 0.04
         fr3_robot.set_joints_default_state(positions=joints_default_positions)
         return fr3_robot
+    
+
+
+
+
+
 
 class FR3Stacking(FR3PickPlaceTask):
-    def __init__(
-        self,
-        name: str = "FR3_stacking",
-        cube_initial_positions: list[np.ndarray] = None,
-        cube_initial_orientations: list[np.ndarray] = None,
-        target_positions: list[np.ndarray] = None,
-        offset: np.ndarray = None,
-    ) -> None:
+    def __init__(self, name: str = "FR3_stacking", cube_initial_positions=None, 
+                 cube_initial_orientations=None, target_positions=None, offset=None) -> None:
         if cube_initial_positions is None:
             raise ValueError("cube_initial_positions must be provided and cannot be None.")
         if cube_initial_orientations is None:
@@ -184,6 +183,7 @@ class FR3Stacking(FR3PickPlaceTask):
         self.cube_initial_orientations = cube_initial_orientations
         self.target_positions = target_positions
         self.current_index = 0  
+        self.task_done = False  # ✅ 완료 상태 변수 추가
 
         # ✅ 블록을 환경에 추가 (중복 생성 방지)
         self.cube_prims = []
@@ -210,9 +210,6 @@ class FR3Stacking(FR3PickPlaceTask):
                 else:
                     raise Exception(f"❌ Prim 삭제 실패: {prim_path}")
 
-            # ✅ USD 업데이트 강제 적용
-            omni.kit.commands.execute("FlushStage")
-
             # ✅ 새로운 블록 생성
             create_prim(
                 prim_path,  
@@ -223,6 +220,40 @@ class FR3Stacking(FR3PickPlaceTask):
             )
 
             self.cube_prims.append(prim_path)
+
+    def update_target(self):
+        """ 다음 블록을 타겟으로 설정하는 함수 """
+        if self.current_index >= len(self.cube_initial_positions) - 1:
+            print("✅ 모든 블록이 스택되었습니다! 종료합니다.")
+            self.task_done = True  # ✅ 모든 블록을 옮기면 완료 처리
+            return
+        
+        self.current_index += 1  # 다음 블록 인덱스로 이동
+
+        # ✅ 다음 블록 Pick & Place 위치 업데이트
+        self._cube_initial_position = self.cube_initial_positions[self.current_index]
+        self._cube_initial_orientation = self.cube_initial_orientations[self.current_index]
+        self._target_position = self.target_positions[self.current_index]
+
+        print(f"🔄 다음 블록을 타겟으로 설정: {self.current_index}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 월드 생성
 my_world = World(stage_units_in_meters=1.0)
@@ -236,8 +267,8 @@ stack_positions = [
 # 블록 초기 위치 설정 (로봇이 집을 위치)
 cube_initial_positions = [
     np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 첫 번째 블록 pick 위치
-    np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 두 번째 블록 pick 위치 (같은 위치에서 pick)
-    np.array([-0.3, 0.4, 0.0515 / 2.0]),  # 세 번째 블록 pick 위치
+    np.array([-0, 0.2, 0.0515 / 2.0]),  # 두 번째 블록 pick 위치 (같은 위치에서 pick)
+    np.array([-0.3, 0.2, 0.0515 / 2.0]),  # 세 번째 블록 pick 위치
 ]
 
 # 블록 초기 방향 설정 (기본적으로 모든 블록은 회전 없이 pick)
@@ -309,6 +340,11 @@ while simulation_app.is_running():
             reset_needed = False
 
         observations = my_world.get_observations()
+
+        # ✅ 모든 작업이 끝나면 시뮬레이션 종료
+        if my_task.task_done:
+            print("✅ 모든 블록을 옮겼으므로 시뮬레이션을 종료합니다!")
+            break  # 🚀 루프 종료
 
         # 블록이 목표 위치에 도달하면 다음 블록으로 이동
         if my_controller.is_done():
