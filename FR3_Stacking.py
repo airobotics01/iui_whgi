@@ -301,10 +301,14 @@ my_task = FR3StackTask(
 
 
 
+my_world.clear()  # ✅ 기존 task 제거
+my_task = FR3StackTask(  # ✅ 새로운 task 추가
+    cube_initial_positions=cube_positions,
+    stack_target_positions=stack_target_positions,
+)
+my_world.add_task(my_task)  # ✅ 다시 task 추가
+my_world.reset()  # ✅ Reset 적용
 
-
-my_world.add_task(my_task)
-my_world.reset()
 
 
 fr3_robot = my_task.set_robot()
@@ -342,19 +346,28 @@ while simulation_app.is_running():
     my_world.step(render=True)
 
     if my_world.is_stopped() and not reset_needed:
+        print("🛑 Simulation Stopped. Resetting Environment...")
         reset_needed = True
 
     if my_world.is_playing():
         if reset_needed or my_world.current_time_step_index == 0:
-            # 기존 작업 정리
-            my_task.cleanup()
-            my_world.reset()
-            
-            # 새로운 로봇 생성 및 초기화
-            fr3_robot = my_task.set_robot()
-            fr3_robot.initialize()
-            gripper = fr3_robot.gripper
+            print("🛑 Simulation Resetting...")
 
+            my_world.clear()  # ✅ 기존 task 삭제
+            my_task = FR3StackTask(
+                cube_initial_positions=cube_positions,
+                stack_target_positions=stack_target_positions,
+            )
+            my_world.add_task(my_task)  # ✅ task 다시 추가
+            my_world.reset()  # ✅ 추가된 task 반영
+
+            # ✅ 로봇 재초기화
+            fr3_robot = my_task.set_robot()
+            fr3_robot.initialize()  # ✅ is_initialized()가 없으므로 직접 실행
+
+            gripper = fr3_robot.gripper  # ✅ 새롭게 초기화된 로봇의 gripper 가져오기
+
+            # ✅ 컨트롤러도 다시 초기화
             my_controller = FR3StackingController(
                 name="FR3_stacking_controller",
                 pick_place_controller=FR3PickPlaceController(
@@ -363,9 +376,15 @@ while simulation_app.is_running():
                     robot_articulation=fr3_robot,
                     end_effector_initial_height=0.3,
                 ),
-                picking_order_cube_names=["cube_2", "cube_1", "cube"],  # 큐브 순서 지정
-                robot_observation_name=task_params["robot_name"]["value"],
+                picking_order_cube_names=["cube_1", "cube_2", "cube"],
+                robot_observation_name=my_world.get_task("FR3_stack_task").get_params()["robot_name"]["value"],
             )
+
+            my_controller.reset()  # ✅ 컨트롤러 초기화
+
+            print("🔄 Simulation Reset Completed!")
+            reset_needed = False
+
 
             
    
@@ -373,10 +392,15 @@ while simulation_app.is_running():
         print("🛠 Checking Stack Target Positions:", stack_target_positions)
         observations = my_world.get_observations()
 
-        # ✅ stack_target_0이 없으면 기본값으로 첫 번째 목표 위치 사용
+        # ✅ 'stack_target_0'이 없으면 안전한 기본값 설정
         if f"stack_target_0" not in observations:
             print("⚠ Warning: 'stack_target' not found in observations. Using first target position as default.")
-            observations["stack_target"] = {"position": np.array(stack_target_positions[0], dtype=np.float32)}  
+            if stack_target_positions is not None and len(stack_target_positions) > 0:
+                default_target = np.array(stack_target_positions[0], dtype=np.float32)
+            else:
+                default_target = np.array([-0.3, 0.6, 0.0515], dtype=np.float32)  # ✅ 완전한 기본값 추가
+            observations["stack_target"] = {"position": default_target}
+
 
         actions = my_controller.forward(
             observations=observations,
