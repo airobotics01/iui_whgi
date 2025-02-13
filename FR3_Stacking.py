@@ -280,14 +280,6 @@ class FR3StackTask(Stacking):
 
 
 
-
-
-
-#! my_world = World(stage_units_in_meters=1.0)
-#! target_position = np.array([-0.3, 0.6, 0])
-#! target_position[2] = 0.0515 / 2.0
-#! my_task = FR3PickPlaceTask(target_position=target_position)
-
 my_world = World(stage_units_in_meters=1.0)
 
 # 큐브 초기 위치 설정
@@ -319,12 +311,7 @@ fr3_robot = my_task.set_robot()
 fr3_robot.initialize()
 gripper = fr3_robot.gripper
 
-# my_controller = FR3PickPlaceController(
-#     name="FR3_controller",
-#     gripper=gripper,
-#     robot_articulation=fr3_robot,
-#     end_effector_initial_height=0.3,
-# )
+
 
 
 my_controller = FR3StackingController(
@@ -368,17 +355,6 @@ while simulation_app.is_running():
             fr3_robot.initialize()
             gripper = fr3_robot.gripper
 
-            # # 컨트롤러 재설정 (기존 컨트롤러가 이전 로봇을 참조하기 때문)
-            # my_controller = FR3PickPlaceController(
-            #     name="FR3_controller",
-            #     gripper=gripper,
-            #     robot_articulation=fr3_robot,
-            #     end_effector_initial_height=0.3,
-            # )
-
-            # # task 초기화
-            # my_task.post_reset()
-            # reset_needed = False
             my_controller = FR3StackingController(
                 name="FR3_stacking_controller",
                 pick_place_controller=FR3PickPlaceController(
@@ -392,27 +368,7 @@ while simulation_app.is_running():
             )
 
             
-            
-
-        # observations = my_world.get_observations()
-
-        # # Observation 확인
-        # if (
-        #     task_params["cube_name"]["value"] in observations
-        #     and "position" in observations[task_params["cube_name"]["value"]]
-        #     and "target_position" in observations[task_params["cube_name"]["value"]]
-        #     and task_params["robot_name"]["value"] in observations
-        #     and "joint_positions" in observations[task_params["robot_name"]["value"]]
-        # ):
-        #     print("Observation valid")
-
-        # # 컨트롤러 업데이트 및 동작 수행
-        # actions = my_controller.forward(stack_target_1
-        #     picking_position=observations[task_params["cube_name"]["value"]]["position"],
-        #     placing_position=observations[task_params["cube_name"]["value"]]["target_position"],
-        #     current_joint_positions=observations[task_params["robot_name"]["value"]]["joint_positions"],
-        #     end_effector_offset=np.array([0, 0, 0.0925]),
-        # )
+   
         
         print("🛠 Checking Stack Target Positions:", stack_target_positions)
         observations = my_world.get_observations()
