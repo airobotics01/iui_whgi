@@ -69,7 +69,9 @@ class FR3RMPFlowController(mg.MotionPolicyController):
             robot_orientation=self._default_orientation,
         )
 
-
+# ! 어때 
+# ! FR3PickPlaceController는 stack에서도 계속 쓰이고 world실행에서도 쓰인다. 이 class를 정의할 때 FR3RMPFlowController 또한 쓰이기 때문에
+# ! pickplace task이외의 task를 수행하더라도 FR3PickPlaceController와 FR3RMPFlowController를 두 class는 계속 쓰인다.
 class FR3PickPlaceController(manipulators_controllers.PickPlaceController):
     def __init__(
         self,
@@ -102,53 +104,6 @@ class FR3PickPlaceController(manipulators_controllers.PickPlaceController):
             end_effector_initial_height=end_effector_initial_height,
             events_dt=events_dt,
         )
-
-
-
-
-class FR3PickPlaceTask(PickPlace):
-    def __init__(
-        self,
-        name: str = "FR3_pick_place",
-        cube_initial_position: np.ndarray = None,
-        cube_initial_orientation: np.ndarray = None,
-        target_position: np.ndarray = None,
-        offset: np.ndarray = None,
-    ) -> None:
-        super().__init__(
-            name=name,
-            cube_initial_position=cube_initial_position,
-            cube_initial_orientation=cube_initial_orientation,
-            target_position=target_position,
-            cube_size=np.array([0.0515, 0.0515, 0.0515]),
-            offset=offset,
-        )
-        return
-
-    def set_robot(self) -> SingleManipulator:
-        robot_prim_path = "/World/FR3"
-        path_to_robot_usd = get_assets_root_path() + "/Isaac/Robots/Franka/FR3/fr3.usd"
-        add_reference_to_stage(usd_path=path_to_robot_usd, prim_path=robot_prim_path)
-        gripper = ParallelGripper(  # For the finger only the first value is used, second is ignored
-            end_effector_prim_path="/World/FR3/fr3_hand",
-            joint_prim_names=["fr3_finger_joint1", "fr3_finger_joint2"],
-            joint_opened_positions=np.array([0.04, 0.04]),
-            joint_closed_positions=np.array([0, 0]),
-            action_deltas=np.array([0.04, 0.04]),
-        )
-        fr3_robot = SingleManipulator(
-            prim_path=robot_prim_path,
-            name="my_fr3",
-            end_effector_prim_name="fr3_hand",
-            gripper=gripper,
-        )
-        joints_default_positions = np.array(
-            [0.0, -0.3, 0.0, -1.8, 0.0, 1.5, 0.7, +0.04, -0.04]
-        )
-        joints_default_positions[7] = 0.04
-        joints_default_positions[8] = 0.04
-        fr3_robot.set_joints_default_state(positions=joints_default_positions)
-        return fr3_robot
 
 
 

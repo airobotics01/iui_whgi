@@ -1,18 +1,5 @@
-./python.sh workspace/aa.py 
 
-
-
-
-
-
-
-
-
-
-
-
-
-🛠 Reset이 되지 않던 원인과 해결 방법
+## 🛠 Reset이 되지 않던 원인과 해결 방법
 ⚠️ 1. my_world.clear() 이후 오브젝트가 정상적으로 다시 추가되지 않음
 문제: clear() 후 새로운 task를 추가하지 않거나, 추가하더라도 reset() 전에 로봇이 정상적으로 배치되지 않음.
 해결: clear() → add_task() → reset() 순서로 수행.
