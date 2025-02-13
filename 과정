@@ -1,0 +1,18 @@
+cd ~/Desktop/isaacsim/workspace
+git init
+git remote add origin https://github.com/airobotics01/iui_whgi.git
+
+git remote -v
+git add .
+git commit -m "Initial commit: 로컬 코드 업로드"
+git branch -M main
+git push -u origin main
+
+git config --global user.name "iui-whgi"
+git config --global user.email "stommy147@gmail.com"
+
+git config --global --list
+
+
+
+여러개 블록 안들어있어서 추가하  FR3 stacking 클래스에 기존상속에서 큐브2개추가
