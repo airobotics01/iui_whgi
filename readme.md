@@ -1,4 +1,5 @@
 
+[Uploading Screencast from 2025년 01월 30일 14시 53분 49초.webm…]()
 
 0218
 
@@ -6,3 +7,5 @@
 
 
 [Screencast from 2025년 02월 18일 23시 19분 36초.webm](https://github.com/user-attachments/assets/4007583e-c80e-4ea7-9c0e-eac7b27b253e)
+
+[Screencast from 2025년 02월 18일 23시 19분 36초.webm](https://github.com/user-attachments/assets/e350ad11-3de4-4007-b13f-43564fe6ead8)
