@@ -23,8 +23,10 @@ LQR공부함. 최적제어
 서버
 draw-debug성공함
 
-[Screencast from 02-28-2025 03:38:11 PM.webm](https://github.com/user-attachments/assets/31f28343-9794-48f1-bd9f-f6a7002919f9)
 
-![Uploading Screenshot from 2025-03-01 14-25-33.png…]()
+
+
+![Screenshot from 2025-03-01 14-25-33](https://github.com/user-attachments/assets/44e4634f-2925-4083-be28-ac8c68ae3761)
+
 
 
