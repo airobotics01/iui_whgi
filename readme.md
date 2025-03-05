@@ -29,4 +29,5 @@ draw-debug성공함
 ![Screenshot from 2025-03-01 14-25-33](https://github.com/user-attachments/assets/44e4634f-2925-4083-be28-ac8c68ae3761)
 
 
+[Screencast from 03-05-2025 10:42:02 AM.webm](https://github.com/user-attachments/assets/9c9c8b15-c5c0-4068-8eea-36f4da5c569d)
 
