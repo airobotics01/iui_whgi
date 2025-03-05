@@ -31,3 +31,7 @@ draw-debug성공함
 
 [Screencast from 03-05-2025 10:42:02 AM.webm](https://github.com/user-attachments/assets/9c9c8b15-c5c0-4068-8eea-36f4da5c569d)
 
+[Uploading Screencast from 03-05-2025 10:50:54 AM.webm…]()
+
+
+
