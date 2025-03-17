@@ -1,5 +1,6 @@
 
 #! 하트,별,세모 다 그릴수 있음. 별은 완벽하지는않다.
+# 이제 reset잘됨
 
 from isaacsim import SimulationApp
 
@@ -15,10 +16,12 @@ from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from omni.isaac.nucleus import get_assets_root_path
 from omni.isaac.core.utils.extensions import enable_extension
 from pxr import UsdGeom
+import os
+import json
 
 from controllers.rmpflow_controller import RMPFlowController
 from tasks.follow_target import FollowTarget
-from franka import FR3
+from franka import FR3  # Make sure franka.py exports the FR3 class
 
 import isaacsim.core.api.tasks as tasks
 import numpy as np
@@ -30,8 +33,22 @@ from typing import List, Optional, Dict
 enable_extension("isaacsim.util.debug_draw")
 from isaacsim.util.debug_draw import _debug_draw
 
+script_path = os.path.abspath(__file__)
+json_path = os.path.dirname(script_path)
+json_path += '/korean.json'
+with open(json_path) as f:
+    data = json.load(f)
+    character_path = data['characters']
 
+def find_paths_by_name(character_name):
+    for character in data['characters']:
+        if character['name'] == character_name:
+            return character['path']
+    return None
 
+def get_coordinate(i):
+    return [(i['start'][0], i['start'][1], i['start'][2]), 
+            (i['end'][0], i['end'][1], i['end'][2])]
 
 # Task 클래스 수정
 class FrankaRobotTask(tasks.FollowTarget):
@@ -63,10 +80,11 @@ class FrankaRobotTask(tasks.FollowTarget):
         self._robots = []  # 여러 개의 로봇을 저장할 리스트
         self._targets = []  # 여러 개의 타겟을 저장할 리스트
         self.robot_num = robot_num
+        self.robot_names = []  # 로봇 이름을 저장할 리스트
         self.target_names = []  # 타겟 이름을 저장할 리스트
         return
 
-    def set_robot(self) -> List[FR3]:
+    def set_robot(self) -> "List[FR3]":
         """여러 개의 FR3 로봇을 생성하며, 1m 간격으로 배치"""
         robots = []
         for i in range(self.robot_num):
@@ -82,6 +100,7 @@ class FrankaRobotTask(tasks.FollowTarget):
             # 로봇을 y축으로 1m씩 간격을 두고 배치
             robot = FR3(prim_path=robot_prim_path, name=robot_name, position=np.array([0, 1 * i, 0]))
             robots.append(robot)
+            self.robot_names.append(robot_name)
         return robots
 
     def set_up_scene(self, scene: Scene) -> None:
@@ -158,7 +177,7 @@ class FrankaRobotTask(tasks.FollowTarget):
         self._move_task_objects_to_their_frame()
         return
 
-    def get_robots(self) -> List[FR3]:
+    def get_robots(self) -> "List[FR3]":
         """여러 개의 로봇 객체 반환"""
         return self._robots
         
@@ -177,6 +196,21 @@ class FrankaRobotTask(tasks.FollowTarget):
                 "position": target_position,
                 "orientation": target_orientation,
             }
+        
+        # 추가 로봇 정보 설정
+        for i, robot_name in enumerate(self.robot_names):
+            # 기본 로봇은 이미 처리함
+            if self._robot is not None and robot_name == self.robot_names:
+                continue
+                
+            if robot_name in self._task_objects:
+                target_obj = self._task_objects[robot_name]
+                joints_state = target_obj.get_joints_state()
+                
+                observations[robot_name] = {
+                    "joint_positions": joints_state.positions,
+                    "joint_velocities": joints_state.velocities,
+                }
         
         # 추가 타겟 정보 설정
         for i, target_name in enumerate(self.target_names):
@@ -245,7 +279,7 @@ class ShapeDrawing:
 class KoreanCharacterDrawing(ShapeDrawing):
     """한글 '아' 글자를 정면으로 그리기를 담당하는 클래스 (x축 고정, y와 z 좌표 이동)"""
     
-    def __init__(self, name="korean_character_drawing", color=(1.0, 0.5, 0.2, 1.0)):
+    def __init__(self, name="korean_character_drawing", color=(1.0, 0.5, 0.2, 1.0), character = '', robot = "", controller = None):
         super().__init__(name=name, color=color)
         self.stroke_index = 0  # 현재 그리는 획의 인덱스
         self.stroke_progress = 0.0  # 현재 획의 진행 상태 (0.0 ~ 1.0)
@@ -255,6 +289,10 @@ class KoreanCharacterDrawing(ShapeDrawing):
         self.delay_seconds = 2.0  # 그리기 시작 전 대기 시간 (2초)
         self.is_drawing = False  # 그리기 진행 중인지 여부
         self.initial_position = None  # 초기 위치 저장
+        self.strokes = []          # 글자의 각 획 정의
+        self.character = character    # 그리는 글자
+        self.robot = robot  # 그리는 로봇
+        self.controller = controller
         
         # 더 먼 거리에서 그리기 위한 x축 오프셋 증가
         self.x_offset = 0.4  # 기존 0.2에서 0.4로 증가
@@ -318,33 +356,9 @@ class KoreanCharacterDrawing(ShapeDrawing):
         #     [(0.0, 0.25, 0.1), (0.0, 0.45, 0.1)]
         # ]
 
-
-
-        # # ㄱ의 좌표 (예시)
-        # self.strokes_ㄱ = [
-        #     # ㄱ의 가로획: 좌측에서 우측으로 그리는 선
-        #     [(0.0, 0.25, 0.7), (0.0, 0.45, 0.7)],
-        #     # ㄱ의 세로획: 우측 끝에서 위쪽에서 아래쪽으로 그리는 선
-        #     [(0.0, 0.45, 0.7), (0.0, 0.45, 0.1)]
-        # ]
-
-        # # ㄴ의 좌표 (예시)
-        # self.strokes_ㄴ = [
-        #     # ㄴ의 세로획: 좌측에서 위쪽에서 아래쪽으로 그리는 선
-        #     [(0.0, 0.25, 0.7), (0.0, 0.25, 0.1)],
-        #     # ㄴ의 가로획: 좌측에서 우측으로 그리는 선 (세로획 하단에서 시작)
-        #     [(0.0, 0.25, 0.1), (0.0, 0.45, 0.1)]
-        # ]
-
-        # ㄷ의 좌표 (예시)
-        self.strokes = [
-            # ㄷ의 위쪽 가로획: 좌측에서 우측으로 그리는 선
-            [(0.0, 0.25, 0.7), (0.0, 0.45, 0.7)],
-            # ㄷ의 오른쪽 세로획: 우측에서 위쪽에서 아래쪽으로 그리는 선
-            [(0.0, 0.25, 0.7), (0.0, 0.5, 0.55)],
-            # ㄷ의 아래쪽 가로획: 좌측에서 우측으로 그리는 선
-            [(0.0, 0.25, 0.55), (0.0, 0.45, 0.55)]
-        ]
+        for i in find_paths_by_name(self.character):
+            self.strokes.append(get_coordinate(i))
+            print(get_coordinate(i))
 
 
     def draw_shape(self, observations, target_name):
@@ -363,7 +377,7 @@ class KoreanCharacterDrawing(ShapeDrawing):
                 print(f"Target {target_name} not in observations: {list(observations.keys())}")
                 return np.array([0.5, 0.5, 0.5])  # 기본 위치
                 
-            if "position" not in observations[target_name]:
+            if (target_name in observations) & ("position" not in observations[target_name]):
                 print(f"Position not found for {target_name}. Available: {list(observations[target_name].keys())}")
                 return np.array([0.5, 0.5, 0.5])  # 기본 위치
                 
@@ -408,6 +422,7 @@ class KoreanCharacterDrawing(ShapeDrawing):
             
             # 현재 그리는 획 가져오기
             current_stroke = self.strokes[self.stroke_index]
+            print(f"!!Stroke Starting Point: {current_stroke[0]}")
             
             # 획 타입에 따라 처리 (직선, 원, 또는 곡선)
             if len(current_stroke) == 2:  # 직선
@@ -487,6 +502,11 @@ class KoreanCharacterDrawing(ShapeDrawing):
                 
                 # 이전 획들을 모두 다시 그리기 (누적 효과)
                 self._draw_completed_strokes(original_position)
+            if self.stroke_progress == 0.0:
+                actions = self.controller.forward(
+                    target_end_effector_position=current_stroke[0],
+                )
+                self.robot.get_articulation_controller().apply_action(actions)
             
             return new_pos
             
@@ -522,21 +542,27 @@ class KoreanCharacterDrawing(ShapeDrawing):
 
         return np.array([0.7071, 0.0, 0.7071, 0.0])
 
-    
     def reset(self):
         """그리기 상태 초기화"""
         # 화면에서 라인을 명시적으로 지우기
         if self.draw:
             self.draw.clear_lines()
-            
+        
+        # Call parent's reset_drawing method correctly
         super().reset_drawing()
+        
+        # Reset all state variables
         self.stroke_index = 0
         self.stroke_progress = 0.0
         self.completed_strokes = []
         self.point_list = []
-        self.start_time = None  # 시작 시간 초기화
-        self.is_drawing = False  # 그리기 상태 초기화
-        self.initial_position = None  # 초기 위치 초기화
+        self.start_time = None
+        self.is_drawing = False
+        self.initial_position = None
+        
+        # Reset any controller state if needed
+        if self.controller:
+            self.controller.reset()
 
 
 
@@ -825,27 +851,6 @@ def main():
         (0.2, 0.7, 1.0, 1.0),  # 하늘색
         (1.0, 0.3, 0.5, 1.0),  # 핑크
     ]
-    
-    # 로봇 별로 다른 모양 할당 (1번: 하트, 2번: 간, 3번: 삼각형)
-    for i, target_name in enumerate(target_names):
-        if i == 0:  # 첫 번째 로봇 (하트)
-            drawing = HeartShapeDrawing(
-                name=f"Heart for {target_name}", 
-                color=colors[i % len(colors)]
-            )
-        elif i == 1:  # 두 번째 로봇 (간)
-            drawing = KoreanCharacterDrawing(
-                name=f"Korean Gan for {target_name}", 
-                color=colors[i % len(colors)]
-            )
-        else:  # 세 번째 로봇 (삼각형)
-            drawing = TriangleShapeDrawing(
-                name=f"Triangle for {target_name}", 
-                color=colors[i % len(colors)]
-            )
-            
-        drawing.setup_post_load()
-        shape_drawings[target_name] = drawing
 
     # 여러 개의 로봇 가져오기
     my_frankas = my_task.get_robots()
@@ -855,6 +860,30 @@ def main():
     for franka in my_frankas:
         controllers.append(RMPFlowController(name=f"controller_{franka.name}", robot_articulation=franka))
 
+    # 로봇 별로 다른 모양 할당 (1번: 하트, 2번: 간, 3번: 삼각형)
+    for i, target_name in enumerate(target_names):
+        if i == 0:  # 첫 번째 로봇 (하트)
+            drawing = HeartShapeDrawing(
+                name=f"Heart for {target_name}", 
+                color=colors[i % len(colors)]
+            )
+        elif i == 1:  # 두 번째 로봇 (Korean)
+            drawing = KoreanCharacterDrawing(
+                name=f"Korean Gan for {target_name}", 
+                color=colors[i % len(colors)],
+                character='ㄹ',
+                robot=my_frankas[i],
+                controller=controllers[i]
+            )
+        else:  # 세 번째 로봇 (삼각형)
+            drawing = TriangleShapeDrawing(
+                name=f"Triangle for {target_name}", 
+                color=colors[i % len(colors)]
+            )
+            
+        drawing.setup_post_load()
+        shape_drawings[target_name] = drawing
+    
     # 메인 시뮬레이션 루프
     reset_needed = False
     while simulation_app.is_running():
@@ -866,12 +895,39 @@ def main():
 
             if my_world.is_playing():
                 if reset_needed:
+                    # First, explicitly clear all drawings
+                    for drawing in shape_drawings.values():
+                        if drawing.draw:
+                            drawing.draw.clear_lines()
+                    
+                    # Reset the world
                     my_world.reset()
+                    
+                    # Reset all controllers
                     for controller in controllers:
                         controller.reset()
+                    
+                    # Reset all drawing objects and their state
                     for drawing in shape_drawings.values():
                         drawing.reset_drawing()
+                        # If it's a KoreanCharacterDrawing, call its specific reset method
+                        if isinstance(drawing, KoreanCharacterDrawing):
+                            drawing.reset()
+                    
+
+                    for drawing in shape_drawings.values():
+                        if drawing.draw:
+                            drawing.draw.clear_lines()
+
+                    # Reinitialize drawing interfaces
+                    for drawing in shape_drawings.values():
+                        drawing.setup_post_load()
+                    
                     reset_needed = False
+                    
+                    # Give simulation time to reset properly
+                    for _ in range(5):  # Step a few frames without processing
+                        my_world.step(render=True)
 
                 # 관찰 정보 가져오기
                 observations = my_world.get_observations()
@@ -907,9 +963,6 @@ def main():
                         franka.get_articulation_controller().apply_action(actions)
                     except Exception as e:
                         print(f"Error for robot {i}, target {target_name}: {e}")
-
-
-
 
         except Exception as e:
             print(f"Error in simulation loop: {e}")
